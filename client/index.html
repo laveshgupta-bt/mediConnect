@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2316A6A1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m12 3-1.9 5.8a2 2 0 0 1-1.28 1.28L3 12l5.8 1.9a2 2 0 0 1 1.28 1.28L12 21l1.9-5.8a2 2 0 0 1 1.28-1.28L21 12l-5.8-1.9a2 2 0 0 1-1.28-1.28Z'/><circle cx='12' cy='12' r='3'/></svg>" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MediConnect — One Patient. One Medical History. Multiple Hospitals.</title>
+    <meta name="description" content="Centralized, secure, interoperable healthcare platform connecting patient medical histories across hospitals with patient-authorized consent." />
+  </head>
+  <body class="bg-surface text-navy-800 antialiased selection:bg-teal-500 selection:text-white">
+    <div id="root"></div>
+    <script>
+      window.addEventListener('error', function(e) {
+        console.error('Window Uncaught Error:', e);
+        var box = document.getElementById('fatal-err-banner');
+        if (!box) {
+          box = document.createElement('div');
+          box.id = 'fatal-err-banner';
+          box.style = 'position:fixed;top:0;left:0;right:0;background:#991b1b;color:#fff;padding:16px;z-index:999999;font-family:monospace;font-size:12px;white-space:pre-wrap;box-shadow:0 4px 20px rgba(0,0,0,0.5);';
+          document.body.prepend(box);
+        }
+        box.textContent = 'Client Startup Error: ' + (e.error ? (e.error.stack || e.error.message) : e.message) + '\nFile: ' + e.filename + ':' + e.lineno;
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        console.error('Unhandled Promise Rejection:', e.reason);
+      });
+    </script>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

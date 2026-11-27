@@ -1,0 +1,29 @@
+{
+  "name": "mediconnect-platform",
+  "version": "1.0.0",
+  "description": "MediConnect — Centralized, Secure, Interoperable Healthcare Platform",
+  "main": "server/index.js",
+  "scripts": {
+    "seed": "node server/db/seed.js",
+    "server": "node server/index.js",
+    "client": "npm run dev --prefix client",
+    "dev": "concurrently -n \"SERVER,CLIENT\" -c \"cyan,green\" \"npm run server\" \"npm run client\"",
+    "build": "npm run build --prefix client",
+    "test": "node test-scenario.js"
+  },
+  "keywords": [
+    "healthcare",
+    "interoperability",
+    "fhir",
+    "mediconnect",
+    "threejs",
+    "react",
+    "express"
+  ],
+  "author": "MediConnect Engineering",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
