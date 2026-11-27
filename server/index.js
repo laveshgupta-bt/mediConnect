@@ -5,23 +5,6 @@ const dotenv = require('dotenv');
 
 dotenv.config();
 
-// Ensure DB is initialized safely
-let dbInitError = null;
-try {
-  require('./db/database');
-} catch (err) {
-  dbInitError = err;
-  console.error('[Startup] Failed to initialize database:', err);
-}
-
-const authRoutes = require('./routes/auth');
-const patientRoutes = require('./routes/patients');
-const doctorRoutes = require('./routes/doctors');
-const hospitalRoutes = require('./routes/hospitals');
-const fhirRoutes = require('./routes/fhir');
-const auditRoutes = require('./routes/audit');
-const aiRoutes = require('./routes/ai');
-
 const app = express();
 const PORT = parseInt(process.env.PORT, 10) || 5000;
 
@@ -37,6 +20,41 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Static directory for uploaded medical documents and public assets
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Ensure DB and routes are loaded with guaranteed crash protection
+let startupError = null;
+try {
+  require('./db/database');
+  
+  const authRoutes = require('./routes/auth');
+  const patientRoutes = require('./routes/patients');
+  const doctorRoutes = require('./routes/doctors');
+  const hospitalRoutes = require('./routes/hospitals');
+  const fhirRoutes = require('./routes/fhir');
+  const auditRoutes = require('./routes/audit');
+  const aiRoutes = require('./routes/ai');
+
+  // Mount modular API routes
+  app.use('/api/auth', authRoutes);
+  app.use('/api/patient', patientRoutes);
+  app.use('/api/doctor', doctorRoutes);
+  app.use('/api/hospitals', hospitalRoutes);
+  app.use('/api/fhir', fhirRoutes);
+  app.use('/api/audit-logs', auditRoutes);
+  app.use('/api/ai', aiRoutes);
+} catch (err) {
+  startupError = err;
+  console.error('[Startup] Critical error loading database or routes:', err);
+
+  // Fallback handler for all API requests to return valid JSON error instead of 500 FUNCTION_INVOCATION_FAILED
+  app.use('/api', (req, res) => {
+    res.status(500).json({
+      error: 'Backend Service Initialization Failed',
+      message: startupError.message,
+      stack: process.env.NODE_ENV === 'development' ? startupError.stack : undefined
+    });
+  });
+}
 
 // QR Code Scanned View (Displays the Work in Progress image when scanned)
 app.get(['/qr-view', '/verify/:id', '/verify'], (req, res) => {
@@ -135,12 +153,12 @@ app.get(['/qr-view', '/verify/:id', '/verify'], (req, res) => {
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  if (dbInitError) {
+  if (startupError) {
     return res.status(500).json({
       status: 'database_initialization_error',
       platform: 'MediConnect Healthcare Interoperability Network',
-      error: dbInitError.message,
-      stack: process.env.NODE_ENV === 'development' ? dbInitError.stack : undefined
+      error: startupError.message,
+      stack: process.env.NODE_ENV === 'development' ? startupError.stack : undefined
     });
   }
   res.json({
@@ -150,15 +168,6 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString()
   });
 });
-
-// Mount modular API routes
-app.use('/api/auth', authRoutes);
-app.use('/api/patient', patientRoutes);
-app.use('/api/doctor', doctorRoutes);
-app.use('/api/hospitals', hospitalRoutes);
-app.use('/api/fhir', fhirRoutes);
-app.use('/api/audit-logs', auditRoutes);
-app.use('/api/ai', aiRoutes);
 
 // Global Error Handler
 app.use((err, req, res, next) => {

@@ -1,4 +1,3 @@
-const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 
@@ -6,7 +5,6 @@ const isServerless = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NA
 const bundledDbPath = path.join(__dirname, 'mediconnect.db');
 
 let dbPath = bundledDbPath;
-
 if (isServerless) {
   // In Vercel serverless functions, the deployment directory is strictly read-only.
   // /tmp is the only writable directory.
@@ -23,20 +21,125 @@ if (isServerless) {
   }
 }
 
-let db;
-try {
-  db = new Database(dbPath);
-  if (!isServerless) {
-    db.pragma('journal_mode = WAL');
-  } else {
-    // In serverless /tmp, use MEMORY journal mode to avoid file locking conflicts
-    db.pragma('journal_mode = MEMORY');
+// Multi-engine SQLite Adapter:
+// 1. Try node:sqlite (Node 22+, built-in native SQLite engine with zero binary compilation issues on Vercel)
+// 2. Fall back to better-sqlite3 (standard local development module)
+// 3. Provide complete API compatibility layer (prepare, get, all, run, exec, pragma, transaction)
+
+class StatementWrapper {
+  constructor(rawStmt) {
+    this.rawStmt = rawStmt;
   }
-  db.pragma('foreign_keys = ON');
-} catch (err) {
-  console.error('[Database] Failed to open SQLite database at', dbPath, err);
-  db = new Database(':memory:');
+
+  get(...params) {
+    const flatParams = params.length === 1 && Array.isArray(params[0]) ? params[0] : params;
+    const row = this.rawStmt.get(...flatParams);
+    return row ? { ...row } : undefined;
+  }
+
+  all(...params) {
+    const flatParams = params.length === 1 && Array.isArray(params[0]) ? params[0] : params;
+    const rows = this.rawStmt.all(...flatParams);
+    return rows ? rows.map(r => ({ ...r })) : [];
+  }
+
+  run(...params) {
+    const flatParams = params.length === 1 && Array.isArray(params[0]) ? params[0] : params;
+    const res = this.rawStmt.run(...flatParams);
+    return {
+      changes: res ? res.changes : 0,
+      lastInsertRowid: res ? res.lastInsertRowid : null
+    };
+  }
 }
+
+class SQLiteAdapter {
+  constructor(engine, rawDb) {
+    this.engine = engine;
+    this.rawDb = rawDb;
+  }
+
+  prepare(sql) {
+    if (this.engine === 'node:sqlite') {
+      const stmt = this.rawDb.prepare(sql);
+      return new StatementWrapper(stmt);
+    }
+    return this.rawDb.prepare(sql);
+  }
+
+  exec(sql) {
+    return this.rawDb.exec(sql);
+  }
+
+  pragma(pragmaStr) {
+    try {
+      if (this.engine === 'node:sqlite') {
+        return this.rawDb.exec(`PRAGMA ${pragmaStr}`);
+      }
+      return this.rawDb.pragma(pragmaStr);
+    } catch (err) {
+      console.warn('[Database] PRAGMA ignored:', pragmaStr, err.message);
+    }
+  }
+
+  transaction(fn) {
+    if (this.engine === 'node:sqlite') {
+      const raw = this.rawDb;
+      return function (...args) {
+        raw.exec('BEGIN IMMEDIATE');
+        try {
+          const result = fn(...args);
+          raw.exec('COMMIT');
+          return result;
+        } catch (error) {
+          raw.exec('ROLLBACK');
+          throw error;
+        }
+      };
+    }
+    return this.rawDb.transaction(fn);
+  }
+}
+
+let db = null;
+
+// Engine 1: node:sqlite (Zero external compilation dependencies, built into Node v22+)
+try {
+  const { DatabaseSync } = require('node:sqlite');
+  try {
+    const raw = new DatabaseSync(dbPath);
+    db = new SQLiteAdapter('node:sqlite', raw);
+    console.log(`[Database] Initialized with node:sqlite at ${dbPath}`);
+  } catch (openErr) {
+    console.warn(`[Database] Could not open ${dbPath} with node:sqlite, falling back to memory:`, openErr.message);
+    const raw = new DatabaseSync(':memory:');
+    db = new SQLiteAdapter('node:sqlite', raw);
+  }
+} catch (nodeSqliteErr) {
+  // Engine 2: better-sqlite3
+  try {
+    const Database = require('better-sqlite3');
+    try {
+      const raw = new Database(dbPath);
+      db = new SQLiteAdapter('better-sqlite3', raw);
+      console.log(`[Database] Initialized with better-sqlite3 at ${dbPath}`);
+    } catch (bsOpenErr) {
+      console.warn(`[Database] Could not open ${dbPath} with better-sqlite3, using :memory:`, bsOpenErr.message);
+      const raw = new Database(':memory:');
+      db = new SQLiteAdapter('better-sqlite3', raw);
+    }
+  } catch (bsErr) {
+    console.error('[Database] Critical: No SQLite engine could be loaded!', bsErr.message);
+    throw new Error(`No SQLite engine available: ${bsErr.message}`);
+  }
+}
+
+if (!isServerless) {
+  db.pragma('journal_mode = WAL');
+} else {
+  db.pragma('journal_mode = MEMORY');
+}
+db.pragma('foreign_keys = ON');
 
 function initializeDatabase() {
   const schema = `
