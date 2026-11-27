@@ -8,12 +8,11 @@ export default function QRCodeModal({ isOpen, onClose, patient, user }) {
 
   if (!isOpen || !patient) return null;
 
-  // Use Wi-Fi LAN IP (192.168.1.38) when scanning from a physical phone, or fallback to current origin
-  const scanHost = (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'))
-    ? '192.168.1.38'
-    : (typeof window !== 'undefined' ? window.location.hostname : 'localhost');
-
-  const qrScanUrl = `http://${scanHost}:5000/qr-view`;
+  // Use Wi-Fi LAN IP (192.168.1.38) when scanning from a physical phone during local dev, or deployed origin on Vercel
+  const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  const qrScanUrl = typeof window !== 'undefined'
+    ? (isLocal ? 'http://192.168.1.38:3000/qr-view' : `${window.location.origin}/qr-view`)
+    : '/qr-view';
 
   const handleCopyId = () => {
     navigator.clipboard.writeText(patient.patient_id);
