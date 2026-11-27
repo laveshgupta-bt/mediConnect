@@ -3,7 +3,8 @@ const router = express.Router();
 const db = require('../db/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { logAuditEvent } = require('../middleware/audit');
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
+const uuidv4 = () => crypto.randomUUID();
 
 // All endpoints in this router require patient authentication
 router.use(authenticateToken);
