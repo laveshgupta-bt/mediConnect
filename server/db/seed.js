@@ -592,7 +592,11 @@ async function seed() {
   console.log('Seeding complete! Database successfully populated with 4 hospitals, doctors, patient Rahul Sharma, records, labs, prescriptions, and audit logs.');
 }
 
-seed().catch(err => {
-  console.error('Seed error:', err);
-  process.exit(1);
-});
+if (require.main === module) {
+  seed().catch(err => {
+    console.error('Seed error:', err);
+    process.exit(1);
+  });
+}
+
+module.exports = seed;

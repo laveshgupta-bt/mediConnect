@@ -5,8 +5,14 @@ const dotenv = require('dotenv');
 
 dotenv.config();
 
-// Ensure DB is initialized
-require('./db/database');
+// Ensure DB is initialized safely
+let dbInitError = null;
+try {
+  require('./db/database');
+} catch (err) {
+  dbInitError = err;
+  console.error('[Startup] Failed to initialize database:', err);
+}
 
 const authRoutes = require('./routes/auth');
 const patientRoutes = require('./routes/patients');
@@ -17,7 +23,7 @@ const auditRoutes = require('./routes/audit');
 const aiRoutes = require('./routes/ai');
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = parseInt(process.env.PORT, 10) || 5000;
 
 // Enable CORS for frontend Vite dev server and network origins
 app.use(cors({
@@ -129,6 +135,14 @@ app.get(['/qr-view', '/verify/:id', '/verify'], (req, res) => {
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
+  if (dbInitError) {
+    return res.status(500).json({
+      status: 'database_initialization_error',
+      platform: 'MediConnect Healthcare Interoperability Network',
+      error: dbInitError.message,
+      stack: process.env.NODE_ENV === 'development' ? dbInitError.stack : undefined
+    });
+  }
   res.json({
     status: 'healthy',
     platform: 'MediConnect Healthcare Interoperability Network',
@@ -155,12 +169,15 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`=======================================================`);
-  console.log(` MediConnect Health API Server running on port ${PORT}`);
-  console.log(` Base API: http://localhost:${PORT}/api`);
-  console.log(` Health Check: http://localhost:${PORT}/api/health`);
-  console.log(`=======================================================`);
-});
+// Only listen when run directly (local development), not inside Vercel serverless environment
+if (require.main === module || (!process.env.VERCEL && !process.env.AWS_LAMBDA_FUNCTION_NAME)) {
+  app.listen(PORT, () => {
+    console.log(`=======================================================`);
+    console.log(` MediConnect Health API Server running on port ${PORT}`);
+    console.log(` Base API: http://localhost:${PORT}/api`);
+    console.log(` Health Check: http://localhost:${PORT}/api/health`);
+    console.log(`=======================================================`);
+  });
+}
 
 module.exports = app;

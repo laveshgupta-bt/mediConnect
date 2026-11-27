@@ -5,6 +5,27 @@ function getAuthHeader() {
   return token ? { 'Authorization': `Bearer ${token}` } : {};
 }
 
+async function parseJsonSafely(res, defaultError = 'Request failed') {
+  const text = await res.text();
+  let data = null;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    if (!res.ok) {
+      if (text.includes('FUNCTION_INVOCATION_FAILED')) {
+        throw new Error('Backend is initializing or undergoing cold start. Please retry in a moment.');
+      }
+      throw new Error(`Server error (${res.status}): ${text.substring(0, 100) || res.statusText}`);
+    }
+    throw new Error('Invalid JSON response received from server.');
+  }
+
+  if (!res.ok) {
+    throw new Error(data?.error || defaultError);
+  }
+  return data;
+}
+
 export const api = {
   // Authentication
   async login(identifier, password, role, medicalId) {
@@ -13,9 +34,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: identifier, identifier, password, role, medical_id: medicalId })
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Login failed');
-    return data;
+    return parseJsonSafely(res, 'Login failed');
   },
 
   async registerPatient(formData) {
@@ -24,9 +43,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(formData)
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Registration failed');
-    return data;
+    return parseJsonSafely(res, 'Registration failed');
   },
 
   async registerDoctor(formData) {
@@ -35,9 +52,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(formData)
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Registration failed');
-    return data;
+    return parseJsonSafely(res, 'Registration failed');
   },
 
   async quickDemoLogin(accountType) {
@@ -46,58 +61,51 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ accountType })
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Demo login failed');
-    return data;
+    return parseJsonSafely(res, 'Demo login failed');
   },
 
   async getMe() {
     const res = await fetch(`${API_BASE}/auth/me`, {
       headers: getAuthHeader()
     });
-    if (!res.ok) throw new Error('Session expired');
-    return res.json();
+    return parseJsonSafely(res, 'Session expired');
   },
 
   async getDemoAccounts() {
     const res = await fetch(`${API_BASE}/auth/demo-accounts`);
-    return res.json();
+    return parseJsonSafely(res, 'Failed to fetch demo accounts');
   },
 
   // Patient API
   async getPatientDashboard() {
     const res = await fetch(`${API_BASE}/patient/dashboard`, { headers: getAuthHeader() });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to fetch dashboard');
-    return data;
+    return parseJsonSafely(res, 'Failed to fetch dashboard');
   },
 
   async getPatientMedicalHistory(params = {}) {
     const query = new URLSearchParams(params).toString();
     const res = await fetch(`${API_BASE}/patient/medical-history?${query}`, { headers: getAuthHeader() });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to fetch medical history');
-    return data;
+    return parseJsonSafely(res, 'Failed to fetch medical history');
   },
 
   async getPatientPrescriptions() {
     const res = await fetch(`${API_BASE}/patient/prescriptions`, { headers: getAuthHeader() });
-    return res.json();
+    return parseJsonSafely(res, 'Failed to fetch prescriptions');
   },
 
   async getPatientLabReports() {
     const res = await fetch(`${API_BASE}/patient/lab-reports`, { headers: getAuthHeader() });
-    return res.json();
+    return parseJsonSafely(res, 'Failed to fetch lab reports');
   },
 
   async getPatientAppointments() {
     const res = await fetch(`${API_BASE}/patient/appointments`, { headers: getAuthHeader() });
-    return res.json();
+    return parseJsonSafely(res, 'Failed to fetch appointments');
   },
 
   async getPatientAccessRequests() {
     const res = await fetch(`${API_BASE}/patient/access-requests`, { headers: getAuthHeader() });
-    return res.json();
+    return parseJsonSafely(res, 'Failed to fetch access requests');
   },
 
   async approveAccessRequest(requestId, durationDays = 7) {
@@ -106,9 +114,7 @@ export const api = {
       headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ durationDays })
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to approve access request');
-    return data;
+    return parseJsonSafely(res, 'Failed to approve access request');
   },
 
   async rejectAccessRequest(requestId, reason) {
@@ -117,14 +123,12 @@ export const api = {
       headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ reason })
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to reject access request');
-    return data;
+    return parseJsonSafely(res, 'Failed to reject access request');
   },
 
   async getPatientConsents() {
     const res = await fetch(`${API_BASE}/patient/consents`, { headers: getAuthHeader() });
-    return res.json();
+    return parseJsonSafely(res, 'Failed to fetch consents');
   },
 
   async revokeConsent(consentId, reason) {
@@ -133,41 +137,33 @@ export const api = {
       headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ reason })
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to revoke consent');
-    return data;
+    return parseJsonSafely(res, 'Failed to revoke consent');
   },
 
   async getPatientAccessHistory() {
     const res = await fetch(`${API_BASE}/patient/access-history`, { headers: getAuthHeader() });
-    return res.json();
+    return parseJsonSafely(res, 'Failed to fetch access history');
   },
 
   async getPatientQrCode() {
     const res = await fetch(`${API_BASE}/patient/qr-code`, { headers: getAuthHeader() });
-    return res.json();
+    return parseJsonSafely(res, 'Failed to fetch QR code');
   },
 
   async getPatientExportSummary() {
     const res = await fetch(`${API_BASE}/patient/export-summary`, { headers: getAuthHeader() });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to export summary');
-    return data;
+    return parseJsonSafely(res, 'Failed to export summary');
   },
 
   // Doctor API
   async getDoctorDashboard() {
     const res = await fetch(`${API_BASE}/doctor/dashboard`, { headers: getAuthHeader() });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to fetch doctor dashboard');
-    return data;
+    return parseJsonSafely(res, 'Failed to fetch doctor dashboard');
   },
 
   async searchPatients(q) {
     const res = await fetch(`${API_BASE}/doctor/search-patients?q=${encodeURIComponent(q)}`, { headers: getAuthHeader() });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Search failed');
-    return data;
+    return parseJsonSafely(res, 'Search failed');
   },
 
   async requestDoctorAccess(patientId, purpose, durationDays = 7) {
@@ -176,9 +172,7 @@ export const api = {
       headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ patientId, purpose, durationDays })
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Access request failed');
-    return data;
+    return parseJsonSafely(res, 'Access request failed');
   },
 
   async emergencyAccess(patientId, justification) {
@@ -187,16 +181,12 @@ export const api = {
       headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ patientId, justification })
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Emergency override failed');
-    return data;
+    return parseJsonSafely(res, 'Emergency override failed');
   },
 
   async getPatientRecordsForDoctor(patientId) {
     const res = await fetch(`${API_BASE}/doctor/patient-records/${patientId}`, { headers: getAuthHeader() });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to load patient records');
-    return data;
+    return parseJsonSafely(res, 'Failed to load patient records');
   },
 
   async addMedicalRecord(recordData) {
@@ -205,9 +195,7 @@ export const api = {
       headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
       body: JSON.stringify(recordData)
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to save record');
-    return data;
+    return parseJsonSafely(res, 'Failed to save record');
   },
 
   async uploadDocument(file) {
@@ -219,25 +207,23 @@ export const api = {
       headers: token ? { 'Authorization': `Bearer ${token}` } : {},
       body: formData
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to upload document');
-    return data;
+    return parseJsonSafely(res, 'Failed to upload document');
   },
 
   async getDoctorAccessHistory() {
     const res = await fetch(`${API_BASE}/doctor/access-history`, { headers: getAuthHeader() });
-    return res.json();
+    return parseJsonSafely(res, 'Failed to fetch access history');
   },
 
   // Hospital API
   async getHospitals() {
     const res = await fetch(`${API_BASE}/hospitals`);
-    return res.json();
+    return parseJsonSafely(res, 'Failed to fetch hospitals');
   },
 
   async getHospitalDetails(id) {
     const res = await fetch(`${API_BASE}/hospitals/${id}`);
-    return res.json();
+    return parseJsonSafely(res, 'Failed to fetch hospital details');
   },
 
   async registerHospital(formData) {
@@ -246,9 +232,7 @@ export const api = {
       headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
       body: JSON.stringify(formData)
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Hospital registration failed');
-    return data;
+    return parseJsonSafely(res, 'Hospital registration failed');
   },
 
   async addDoctorToHospital(hospitalId, doctorData) {
@@ -257,27 +241,25 @@ export const api = {
       headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
       body: JSON.stringify(doctorData)
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to affiliate doctor');
-    return data;
+    return parseJsonSafely(res, 'Failed to affiliate doctor');
   },
 
   // Audit logs
   async getAuditLogs(params = {}) {
     const query = new URLSearchParams(params).toString();
     const res = await fetch(`${API_BASE}/audit-logs?${query}`, { headers: getAuthHeader() });
-    return res.json();
+    return parseJsonSafely(res, 'Failed to fetch audit logs');
   },
 
   // FHIR
   async getFhirPatient(patientId) {
     const res = await fetch(`${API_BASE}/fhir/Patient/${patientId}`, { headers: getAuthHeader() });
-    return res.json();
+    return parseJsonSafely(res, 'Failed to fetch FHIR patient');
   },
 
   async getFhirBundle(patientId) {
     const res = await fetch(`${API_BASE}/fhir/Bundle/${patientId}`, { headers: getAuthHeader() });
-    return res.json();
+    return parseJsonSafely(res, 'Failed to fetch FHIR bundle');
   },
 
   // Gemini AI Assistant Chat
@@ -287,8 +269,6 @@ export const api = {
       headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ messages, userRole })
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'AI Assistant is temporarily busy');
-    return data;
+    return parseJsonSafely(res, 'AI Assistant is temporarily busy');
   }
 };

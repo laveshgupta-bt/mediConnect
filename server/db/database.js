@@ -2,12 +2,41 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 
-const dbPath = path.join(__dirname, 'mediconnect.db');
-const db = new Database(dbPath);
+const isServerless = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+const bundledDbPath = path.join(__dirname, 'mediconnect.db');
 
-// Enable WAL mode and foreign keys for high performance and integrity
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+let dbPath = bundledDbPath;
+
+if (isServerless) {
+  // In Vercel serverless functions, the deployment directory is strictly read-only.
+  // /tmp is the only writable directory.
+  const tmpDbPath = path.join('/tmp', 'mediconnect.db');
+  try {
+    if (!fs.existsSync(tmpDbPath)) {
+      if (fs.existsSync(bundledDbPath)) {
+        fs.copyFileSync(bundledDbPath, tmpDbPath);
+      }
+    }
+    dbPath = tmpDbPath;
+  } catch (err) {
+    console.warn('[Database] Failed to copy database to /tmp:', err.message);
+  }
+}
+
+let db;
+try {
+  db = new Database(dbPath);
+  if (!isServerless) {
+    db.pragma('journal_mode = WAL');
+  } else {
+    // In serverless /tmp, use MEMORY journal mode to avoid file locking conflicts
+    db.pragma('journal_mode = MEMORY');
+  }
+  db.pragma('foreign_keys = ON');
+} catch (err) {
+  console.error('[Database] Failed to open SQLite database at', dbPath, err);
+  db = new Database(':memory:');
+}
 
 function initializeDatabase() {
   const schema = `
@@ -251,6 +280,18 @@ function initializeDatabase() {
   }
 
   console.log('Database tables verified and initialized successfully.');
+
+  // If database is empty (e.g. freshly initialized in /tmp on Vercel), auto-seed essential demo data
+  try {
+    const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get()?.count || 0;
+    if (userCount === 0) {
+      console.log('[Database] Database has 0 users. Triggering initial demo data seed...');
+      const seed = require('./seed');
+      seed().catch(err => console.warn('[Database] Auto-seed background error:', err.message));
+    }
+  } catch (err) {
+    console.warn('[Database] Could not verify user count:', err.message);
+  }
 }
 
 initializeDatabase();
